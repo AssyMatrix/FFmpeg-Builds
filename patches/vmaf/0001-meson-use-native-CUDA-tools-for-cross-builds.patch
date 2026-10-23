@@ -1,0 +1,42 @@
+From 05bea52ef25efd3e230639159d68c8d2a2e42ae7 Mon Sep 17 00:00:00 2001
+From: AssyMatrix < 344224662+AssyMatrix@users.noreply.github.com>
+Date: Fri, 23 Oct 2026 14:45:43 +0000
+Subject: [PATCH] meson: use native CUDA tools for cross builds
+
+When cross-compiling, Meson tries to find a CUDA compiler for the
+target system and test it by running a program. That cannot work when
+the target is a different system, such as Windows.
+
+nvcc is only used here to generate GPU code, and bin2c to turn that
+code into C source. Both run on the build machine, so mark them
+native : true and let Meson use the local CUDA tools.
+---
+ libvmaf/src/meson.build | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/libvmaf/src/meson.build b/libvmaf/src/meson.build
+index 6900c572..4cae390a 100644
+--- a/libvmaf/src/meson.build
++++ b/libvmaf/src/meson.build
+@@ -363,9 +363,9 @@ if is_cuda_enabled
+     ]
+     gencode = []
+     if get_option('enable_nvcc')
+-        cuda_lang = add_languages('cuda', required : true)
+-        cuda_compiler = meson.get_compiler('cuda')
+-        nvcc_exe = find_program('nvcc')
++        cuda_lang = add_languages('cuda', required : true, native : true)
++        cuda_compiler = meson.get_compiler('cuda', native : true)
++        nvcc_exe = find_program('nvcc', native : true)
+ 
+         gencode = [
+             '--fatbin',
+@@ -440,7 +440,7 @@ if is_cuda_enabled
+ 
+     # bin2c is distributed along with cuda tools. Use '--padd 0x00' to add a NULL-terminator byte
+     # to the end of the generated array.
+-    bin2c_exe = find_program('bin2c')
++    bin2c_exe = find_program('bin2c', native : true)
+     ptx_arrays = []
+     foreach name, _ptx : ptx_files
+         t = custom_target('ptx_bin2c_@0@'.format(name),

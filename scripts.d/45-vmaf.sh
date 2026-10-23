@@ -18,30 +18,13 @@ ffbuild_enabled() {
     return 0
 }
 
+ffbuild_dockerstage() {
+    to_df "RUN --mount=src=${SELF},dst=/stage.sh --mount=src=${SELFCACHE},dst=/cache.tar.xz --mount=src=patches/vmaf,dst=/patches run_stage /stage.sh"
+}
+
 ffbuild_dockerdl() {
     default_dl .
     echo "git-mini-clone \"$SCRIPT_REPO2\" \"$SCRIPT_COMMIT2\" ffnvcodec"
-}
-
-vmaf_patch_cuda_native() {
-    sed -i \
-        -e "s/add_languages('cuda', required : true)/add_languages('cuda', required : true, native : true)/" \
-        -e "s/meson.get_compiler('cuda')/meson.get_compiler('cuda', native : true)/" \
-        -e "s/find_program('nvcc')/find_program('nvcc', native : true)/" \
-        -e "s/find_program('bin2c')/find_program('bin2c', native : true)/" \
-        libvmaf/src/meson.build || return 1
-
-    local p
-    for p in \
-        "add_languages('cuda', required : true, native : true)" \
-        "meson.get_compiler('cuda', native : true)" \
-        "find_program('nvcc', native : true)" \
-        "find_program('bin2c', native : true)"; do
-        grep -Fq "$p" libvmaf/src/meson.build || {
-            echo "ERROR: Failed to patch VMAF's meson.build: $p"
-            return 1
-        }
-    done
 }
 
 # Single idempotent libvmaf.pc fix.
@@ -83,7 +66,12 @@ vmaf_fix_pc() {
 ffbuild_dockerbuild() {
     # Enable CUDA for this build. Set to 0 to build libvmaf without CUDA.
     local cuda=1
-
+    
+    for patch in /patches/*.patch; do
+        echo "Applying $patch"
+        git am < "$patch" || return 1
+    done
+    
     # Kill build of unused and broken tools.
     echo > libvmaf/tools/meson.build
 
@@ -103,9 +91,15 @@ ffbuild_dockerbuild() {
     )
 
     if [[ $TARGET == *32 ]]; then
-        myconf+=(-Denable_avx512=false -Denable_asm=false)
+        myconf+=(
+            -Denable_avx512=false
+            -Denable_asm=false
+        )
     else
-        myconf+=(-Denable_avx512=true -Denable_asm=true)
+        myconf+=(
+            -Denable_avx512=true
+            -Denable_asm=true
+        )
     fi
 
     if [[ $TARGET == win* || $TARGET == linux* ]]; then
