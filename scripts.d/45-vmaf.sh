@@ -7,8 +7,9 @@ SCRIPT_COMMIT="86da14d0306a138fd3f01319860b905169746516"
 SCRIPT_REPO2="https://github.com/FFmpeg/nv-codec-headers.git"
 SCRIPT_COMMIT2="eddcea9e27f6b772057c9b3f87de2cc1737faffc"
 
-CUDA_VERSION="13-4"
-CUDA_APT_PKGS=(cuda-nvcc-${CUDA_VERSION} cuda-cudart-dev-${CUDA_VERSION})
+CUDA_VERSION="13.4"
+CUDA_APT_VERSION="${CUDA_VERSION//./-}"
+CUDA_APT_PKGS=("cuda-nvcc-${CUDA_APT_VERSION}" "cuda-cudart-dev-${CUDA_APT_VERSION}")
 CUDA_PATH="/usr/local/cuda-${CUDA_VERSION}"
 CUDA_KEYRING_SHA256_X86_64="f7f474b5f6a4adf987aa587920df00e713285958ef6a913dda1945a544a3099e"
 CUDA_KEYRING_SHA256_SBSA="bf74da243be6737d338a8e6f03469eb983825bba7b6dbd0b6d6a6f60229cbb6e"
@@ -22,7 +23,6 @@ ffbuild_dockerdl() {
     echo "git-mini-clone \"$SCRIPT_REPO2\" \"$SCRIPT_COMMIT2\" ffnvcodec"
 }
 
-# winarm64 keeps the previous (working) mainline patches.
 vmaf_patch_cuda_native() {
     sed -i \
         -e "s/add_languages('cuda', required : true)/add_languages('cuda', required : true, native : true)/" \
@@ -38,7 +38,7 @@ vmaf_patch_cuda_native() {
         "find_program('nvcc', native : true)" \
         "find_program('bin2c', native : true)"; do
         grep -Fq "$p" libvmaf/src/meson.build || {
-            echo "ERROR: Failed to patch VMAF's meson.build for Windows cross-build: $p"
+            echo "ERROR: Failed to patch VMAF's meson.build: $p"
             return 1
         }
     done
@@ -153,16 +153,7 @@ ffbuild_dockerbuild() {
         # never the MinGW cross compiler.
         export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++"
 
-        if [[ $TARGET == win* ]]; then
-            vmaf_patch_cuda_native || return 1
-        elif [[ $TARGET == linux* ]]; then
-            # Pin Meson to this exact NVCC via the cross file.
-            if grep -q '^cuda[[:space:]]*=' /cross.meson; then
-                sed -i -E "s|^cuda[[:space:]]*=.*$|cuda = '${CUDA_PATH}/bin/nvcc'|" /cross.meson || return 1
-            else
-                sed -i "/^\[binaries\]/a cuda = '${CUDA_PATH}/bin/nvcc'" /cross.meson || return 1
-            fi
-        fi
+        vmaf_patch_cuda_native || return 1
 
         "${CUDA_PATH}/bin/nvcc" --version || return 1
         command -v bin2c || return 1
